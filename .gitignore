@@ -35,6 +35,10 @@ yarn-error.*
 .env.local
 .env*.local
 
+# EAS credentials (never commit)
+.eas/service-account.json
+EXPO_ACCESS_TOKEN
+
 # typescript
 *.tsbuildinfo
 
