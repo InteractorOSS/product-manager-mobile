@@ -33,9 +33,7 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "peter@interactor.com",
-        "ascAppId": "",
-        "appleTeamId": ""
+        "appleId": "peter@interactor.com"
       },
       "android": {
         "serviceAccountKeyPath": ".eas/service-account.json",
