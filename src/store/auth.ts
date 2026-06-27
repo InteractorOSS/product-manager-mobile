@@ -32,6 +32,7 @@ interface AuthState {
   email: string | null;
   hydrated: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithJwt: (userJwt: string) => Promise<void>;
   signOut: () => Promise<void>;
   hydrate: () => Promise<void>;
 }
@@ -66,25 +67,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ token: legacy ?? null, hydrated: true });
   },
 
-  signIn: async (emailInput: string, password: string) => {
-    // Step 1: obtain short-lived user JWT from account-server
-    const loginRes = await fetch(`${ACCOUNT_SERVER_URL}/api/v1/admin/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: emailInput, password }),
-    });
-    if (!loginRes.ok) {
-      const body = (await loginRes.json().catch(() => ({}))) as { message?: string };
-      throw new Error(body.message ?? "Invalid credentials");
-    }
-    const { token: userJwt } = (await loginRes.json()) as { token: string };
-
-    // Step 2: decode user JWT to get userId + email
+  signInWithJwt: async (userJwt: string) => {
+    // Decode user JWT (from OIDC id_token or password login) to extract userId + email
     const claims = decodeJwtClaims(userJwt);
     const userId = (claims.sub as string) ?? "";
-    const email = (claims.email as string) ?? emailInput;
+    const email = (claims.email as string) ?? "";
 
-    // Step 3: exchange user JWT for a long-lived pm_mobile_* session token
+    // Exchange for a long-lived pm_mobile_* session token
     const deviceName =
       Platform.OS === "ios" ? "Build iPhone" : "Build Android";
     const sessionRes = await fetch(`${API_BASE_URL}/api/v1/me/mobile-sessions`, {
@@ -108,6 +97,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const session: StoredSession = { token: mobileToken, userId, email };
     await SecureStore.setItemAsync(SECURE_STORE_KEY, JSON.stringify(session));
     set({ token: mobileToken, userId, email });
+  },
+
+  signIn: async (emailInput: string, password: string) => {
+    // Obtain short-lived user JWT from account-server via password
+    const loginRes = await fetch(`${ACCOUNT_SERVER_URL}/api/v1/admin/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: emailInput, password }),
+    });
+    if (!loginRes.ok) {
+      const body = (await loginRes.json().catch(() => ({}))) as { message?: string };
+      throw new Error(body.message ?? "Invalid credentials");
+    }
+    const { token: userJwt } = (await loginRes.json()) as { token: string };
+    await get().signInWithJwt(userJwt);
   },
 
   signOut: async () => {

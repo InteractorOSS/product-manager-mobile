@@ -33,7 +33,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     if (!token && !inAuthGroup) {
       router.replace("/(auth)/login");
     } else if (token && inAuthGroup) {
-      router.replace("/(tabs)/");
+      router.replace("/(tabs)" as never);
     }
   }, [token, hydrated, segments, router]);
 

@@ -6,3 +6,6 @@ export const API_BASE_URL =
 
 export const ACCOUNT_SERVER_URL =
   process.env.EXPO_PUBLIC_ACCOUNT_SERVER_URL ?? "https://auth.interactor.com";
+
+export const INTERACTOR_CLIENT_ID =
+  process.env.EXPO_PUBLIC_INTERACTOR_CLIENT_ID ?? "";

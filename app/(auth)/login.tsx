@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Interactor, Inc.
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -12,13 +12,39 @@ import {
   Platform,
 } from "react-native";
 import { useAuthStore } from "@/src/store/auth";
+import { useOidcRequest, exchangeCodeForToken } from "@/src/lib/oidc";
 
 export default function LoginScreen() {
-  const { signIn } = useAuthStore();
+  const { signIn, signInWithJwt } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [oidcLoading, setOidcLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [request, response, promptAsync] = useOidcRequest();
+
+  useEffect(() => {
+    if (!response) return;
+    if (response.type === "success") {
+      const code = response.params.code;
+      const verifier = request?.codeVerifier;
+      if (!code || !verifier) {
+        setError("OAuth response missing required parameters");
+        return;
+      }
+      setOidcLoading(true);
+      setError(null);
+      exchangeCodeForToken(code, verifier)
+        .then((jwt) => signInWithJwt(jwt))
+        .catch((err) =>
+          setError(err instanceof Error ? err.message : "Google sign-in failed"),
+        )
+        .finally(() => setOidcLoading(false));
+    } else if (response.type === "error") {
+      setError(response.error?.message ?? "Google sign-in failed");
+    }
+  }, [response]);
 
   async function handleSignIn() {
     if (!email || !password) return;
@@ -33,6 +59,13 @@ export default function LoginScreen() {
     }
   }
 
+  async function handleGoogleSignIn() {
+    setError(null);
+    await promptAsync();
+  }
+
+  const busy = loading || oidcLoading;
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -43,6 +76,27 @@ export default function LoginScreen() {
         <Text style={styles.subtitle}>Project management for software teams</Text>
 
         {error && <Text style={styles.error}>{error}</Text>}
+
+        <TouchableOpacity
+          style={[styles.googleButton, busy && styles.buttonDisabled]}
+          onPress={handleGoogleSignIn}
+          disabled={busy || !request}
+        >
+          {oidcLoading ? (
+            <ActivityIndicator color="#1C1C1E" />
+          ) : (
+            <>
+              <Text style={styles.googleIcon}>G</Text>
+              <Text style={styles.googleButtonText}>Continue with Google</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or</Text>
+          <View style={styles.dividerLine} />
+        </View>
 
         <TextInput
           style={styles.input}
@@ -64,9 +118,9 @@ export default function LoginScreen() {
         />
 
         <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
+          style={[styles.button, busy && styles.buttonDisabled]}
           onPress={handleSignIn}
-          disabled={loading}
+          disabled={busy}
         >
           {loading ? (
             <ActivityIndicator color="#FFFFFF" />
@@ -95,6 +149,36 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: "center",
   },
+  googleButton: {
+    height: 52,
+    borderRadius: 9999,
+    borderWidth: 1.5,
+    borderColor: "#E5E5EA",
+    backgroundColor: "#FFFFFF",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    marginBottom: 24,
+  },
+  googleIcon: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#4285F4",
+  },
+  googleButtonText: {
+    color: "#1C1C1E",
+    fontWeight: "600",
+    fontSize: 16,
+  },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 24,
+    gap: 12,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: "#E5E5EA" },
+  dividerText: { fontSize: 14, color: "#8E8E93" },
   input: {
     height: 52,
     borderRadius: 12,
