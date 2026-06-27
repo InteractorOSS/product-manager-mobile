@@ -1,0 +1,46 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://build.interactor.com",
+        "EXPO_PUBLIC_ACCOUNT_SERVER_URL": "https://auth.interactor.com"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://build.interactor.com",
+        "EXPO_PUBLIC_ACCOUNT_SERVER_URL": "https://auth.interactor.com"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://build.interactor.com",
+        "EXPO_PUBLIC_ACCOUNT_SERVER_URL": "https://auth.interactor.com"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "peter@interactor.com",
+        "ascAppId": "",
+        "appleTeamId": ""
+      },
+      "android": {
+        "serviceAccountKeyPath": ".eas/service-account.json",
+        "track": "internal"
+      }
+    }
+  }
+}

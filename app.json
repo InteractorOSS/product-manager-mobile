@@ -2,6 +2,7 @@
   "expo": {
     "name": "Build",
     "slug": "product-manager-mobile",
+    "owner": "interactor",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -43,6 +44,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "88a146cc-a2b2-48f2-aeea-314c745d4e5a"
+      }
     }
   }
 }
