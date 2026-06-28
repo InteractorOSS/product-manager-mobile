@@ -7,11 +7,11 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 const PRIMARY = "#4CD964";
 const INACTIVE = "#8E8E93";
 
-type IconName = React.ComponentProps<typeof Ionicons>["name"];
+type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
-function icon(focused: boolean, on: IconName, off: IconName) {
+function tabIcon(focused: boolean, active: IoniconName, inactive: IoniconName) {
   return ({ color }: { color: string }) => (
-    <Ionicons name={focused ? on : off} size={24} color={color} />
+    <Ionicons name={focused ? active : inactive} size={24} color={color} />
   );
 }
 
@@ -32,37 +32,37 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Home",
-          tabBarLabel: "Home",
+          title: "Overview",
+          tabBarLabel: "Overview",
           tabBarIcon: ({ focused, color }) =>
-            icon(focused, "home", "home-outline")({ color }),
+            tabIcon(focused, "grid", "grid-outline")({ color }),
         }}
       />
       <Tabs.Screen
-        name="tasks"
+        name="goal"
         options={{
-          title: "My Tasks",
-          tabBarLabel: "Tasks",
+          title: "Goals",
+          tabBarLabel: "Goal",
           tabBarIcon: ({ focused, color }) =>
-            icon(focused, "checkbox", "checkbox-outline")({ color }),
+            tabIcon(focused, "flag", "flag-outline")({ color }),
         }}
       />
       <Tabs.Screen
         name="approvals"
         options={{
           title: "Approvals",
-          tabBarLabel: "Approvals",
+          tabBarLabel: "Approval",
           tabBarIcon: ({ focused, color }) =>
-            icon(focused, "thumbs-up", "thumbs-up-outline")({ color }),
+            tabIcon(focused, "checkmark-circle", "checkmark-circle-outline")({ color }),
         }}
       />
       <Tabs.Screen
-        name="inbox"
+        name="feedback"
         options={{
-          title: "Inbox",
-          tabBarLabel: "Inbox",
+          title: "Feedback",
+          tabBarLabel: "Feedback",
           tabBarIcon: ({ focused, color }) =>
-            icon(focused, "notifications", "notifications-outline")({ color }),
+            tabIcon(focused, "chatbubble-ellipses", "chatbubble-ellipses-outline")({ color }),
         }}
       />
       <Tabs.Screen
@@ -71,7 +71,7 @@ export default function TabLayout() {
           title: "Me",
           tabBarLabel: "Me",
           tabBarIcon: ({ focused, color }) =>
-            icon(focused, "person", "person-outline")({ color }),
+            tabIcon(focused, "person", "person-outline")({ color }),
         }}
       />
     </Tabs>

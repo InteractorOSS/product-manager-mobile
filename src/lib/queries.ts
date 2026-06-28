@@ -1,13 +1,9 @@
 // Copyright (c) 2026 Interactor, Inc.
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/**
- * TanStack Query hooks for the Build API.
- * All hooks read the pm_mobile_* token from the auth store via api.get/post/patch/delete.
- */
-import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/src/lib/api-client";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Notification types ────────────────────────────────────────────────────────
 
 export interface Notification {
   id: string;
@@ -25,6 +21,8 @@ export interface NotificationsResponse {
   data: Notification[];
   meta: { total: number; page: number; perPage: number; unreadCount: number };
 }
+
+// ── Todo types ────────────────────────────────────────────────────────────────
 
 export type TodoKind = "task" | "approval" | "decision_ack";
 export type TodoPriority = "low" | "medium" | "high" | "urgent";
@@ -49,7 +47,7 @@ export type TodoItem =
 
 export interface TodosResponse {
   data: TodoItem[];
-  facets: { organizations: unknown[]; projects: unknown[]; types: { kind: TodoKind; count: number }[] };
+  facets: { organizations: unknown[]; projects: TodoProject[]; types: { kind: TodoKind; count: number }[] };
   meta: { total: number };
 }
 
@@ -58,13 +56,61 @@ export interface GlobalCounts {
   perOrg: Record<string, { todosCount: number }>;
 }
 
-// ── Keys ─────────────────────────────────────────────────────────────────────
+// ── Goal types ────────────────────────────────────────────────────────────────
+
+export interface EngineGoal {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  type: string;
+  displayNumber: number | null;
+  targetDate: string | null;
+  ownerName: string | null;
+  prState: string;
+  completion: {
+    doneTasks: number;
+    totalTasks: number;
+    complete: boolean;
+  };
+}
+
+export interface GoalsResponse {
+  data: EngineGoal[];
+  meta: { total: number };
+}
+
+// ── Feedback types ────────────────────────────────────────────────────────────
+
+export interface FeedbackEntry {
+  id: string;
+  title: string;
+  body: string | null;
+  status: string;
+  source: string;
+  rating: number | null;
+  voteCount: number;
+  authorName: string | null;
+  groupName: string | null;
+  createdAt: string;
+}
+
+export interface FeedbackResponse {
+  data: FeedbackEntry[];
+  meta: { total: number };
+}
+
+// ── Query keys ────────────────────────────────────────────────────────────────
 
 export const keys = {
   notifications: (page: number, unreadOnly?: boolean) =>
     ["notifications", page, unreadOnly] as const,
   todos: (scope: string) => ["todos", scope] as const,
   counts: () => ["counts"] as const,
+  goals: (projectId?: string, status?: string) =>
+    ["goals", projectId, status] as const,
+  feedback: (projectId: string) => ["feedback", projectId] as const,
 };
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
@@ -83,7 +129,8 @@ export function useNotifications(page = 1, unreadOnly = false) {
 export function useTodos(scope = "global") {
   return useQuery({
     queryKey: keys.todos(scope),
-    queryFn: () => api.get<TodosResponse>(`/api/v1/me/todos?scope=${scope}&sort=urgency&limit=100`),
+    queryFn: () =>
+      api.get<TodosResponse>(`/api/v1/me/todos?scope=${scope}&sort=urgency&limit=100`),
   });
 }
 
@@ -92,6 +139,28 @@ export function useCounts() {
     queryKey: keys.counts(),
     queryFn: () => api.get<GlobalCounts>("/api/v1/me/counts"),
     staleTime: 60_000,
+  });
+}
+
+export function useGoals(projectId?: string, status?: string) {
+  return useQuery({
+    queryKey: keys.goals(projectId, status),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (projectId) params.set("projectId", projectId);
+      if (status) params.set("status", status);
+      const qs = params.toString();
+      return api.get<GoalsResponse>(`/api/v1/me/engine/goals${qs ? `?${qs}` : ""}`);
+    },
+  });
+}
+
+export function useFeedback(projectId: string) {
+  return useQuery({
+    queryKey: keys.feedback(projectId),
+    queryFn: () =>
+      api.get<FeedbackResponse>(`/api/v1/projects/${projectId}/feedback`),
+    enabled: !!projectId,
   });
 }
 
@@ -120,7 +189,15 @@ export function useMarkAllRead() {
 export function useDecideApproval() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, action, comment }: { id: string; action: "grant" | "reject"; comment?: string }) =>
+    mutationFn: ({
+      id,
+      action,
+      comment,
+    }: {
+      id: string;
+      action: "grant" | "reject";
+      comment?: string;
+    }) =>
       api.post(`/api/v1/me/engine/approvals/${id}/decide`, { action, comment }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["todos"] });
