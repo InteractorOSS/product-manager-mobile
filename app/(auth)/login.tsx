@@ -26,23 +26,33 @@ export default function LoginScreen() {
 
   useEffect(() => {
     if (!response) return;
+    console.log("[login] auth response type:", response.type);
     if (response.type === "success") {
+      console.log("[login] auth params:", JSON.stringify(response.params));
+      console.log("[login] request redirectUri:", request?.redirectUri);
       const code = response.params.code;
-      const verifier = request?.codeVerifier;
-      if (!code || !verifier) {
-        setError("OAuth response missing required parameters");
+      if (!code) {
+        setError("OAuth response missing code parameter");
         return;
       }
+      const redirectUri = request?.redirectUri ?? "";
       setOidcLoading(true);
       setError(null);
-      exchangeCodeForToken(code, verifier)
-        .then((jwt) => signInWithJwt(jwt))
-        .catch((err) =>
-          setError(err instanceof Error ? err.message : "Google sign-in failed"),
-        )
+      exchangeCodeForToken(code, redirectUri)
+        .then((jwt) => {
+          console.log("[login] got jwt, exchanging for mobile token");
+          return signInWithJwt(jwt);
+        })
+        .catch((err) => {
+          console.error("[login] sign-in error:", err);
+          setError(err instanceof Error ? err.message : "Google sign-in failed");
+        })
         .finally(() => setOidcLoading(false));
     } else if (response.type === "error") {
+      console.error("[login] auth error:", JSON.stringify(response.error));
       setError(response.error?.message ?? "Google sign-in failed");
+    } else {
+      console.log("[login] auth response dismissed or cancelled");
     }
   }, [response]);
 

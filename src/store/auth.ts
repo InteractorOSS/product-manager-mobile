@@ -73,30 +73,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const userId = (claims.sub as string) ?? "";
     const email = (claims.email as string) ?? "";
 
-    // Exchange for a long-lived pm_mobile_* session token
-    const deviceName =
-      Platform.OS === "ios" ? "Build iPhone" : "Build Android";
-    const sessionRes = await fetch(`${API_BASE_URL}/api/v1/me/mobile-sessions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${userJwt}`,
-      },
-      body: JSON.stringify({
-        deviceName,
-        platform: Platform.OS,
-        appVersion: "1.0.0",
-      }),
-    });
-    if (!sessionRes.ok) {
-      const body = (await sessionRes.json().catch(() => ({}))) as { message?: string };
-      throw new Error(body.message ?? "Session exchange failed");
-    }
-    const { token: mobileToken } = (await sessionRes.json()) as { token: string };
-
-    const session: StoredSession = { token: mobileToken, userId, email };
+    // TODO: replace with proper mobile-session exchange once
+    // POST /api/v1/me/mobile-sessions is deployed on build.interactor.com.
+    // For now, store the user JWT directly so the app is usable during dev.
+    const session: StoredSession = { token: userJwt, userId, email };
     await SecureStore.setItemAsync(SECURE_STORE_KEY, JSON.stringify(session));
-    set({ token: mobileToken, userId, email });
+    set({ token: userJwt, userId, email });
   },
 
   signIn: async (emailInput: string, password: string) => {

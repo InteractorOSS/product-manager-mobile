@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
-import { ACCOUNT_SERVER_URL, INTERACTOR_CLIENT_ID } from "@/src/lib/config";
+import { ACCOUNT_SERVER_URL, INTERACTOR_CLIENT_ID, INTERACTOR_CLIENT_SECRET } from "@/src/lib/config";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -20,28 +20,26 @@ export function makeRedirectUri() {
 
 export function useOidcRequest() {
   const redirectUri = makeRedirectUri();
+  console.log("[oidc] redirect URI:", redirectUri);
   return AuthSession.useAuthRequest(
     {
       clientId: INTERACTOR_CLIENT_ID,
       scopes: ["openid", "profile", "email"],
       redirectUri,
-      usePKCE: true,
+      usePKCE: false,
     },
     DISCOVERY,
   );
 }
 
-export async function exchangeCodeForToken(
-  code: string,
-  codeVerifier: string,
-): Promise<string> {
-  const redirectUri = makeRedirectUri();
+export async function exchangeCodeForToken(code: string, redirectUri: string): Promise<string> {
+  console.log("[oidc] exchanging code with redirectUri:", redirectUri);
   const res = await AuthSession.exchangeCodeAsync(
     {
       clientId: INTERACTOR_CLIENT_ID,
+      clientSecret: INTERACTOR_CLIENT_SECRET || undefined,
       code,
       redirectUri,
-      extraParams: { code_verifier: codeVerifier },
     },
     DISCOVERY,
   );

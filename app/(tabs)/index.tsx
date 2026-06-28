@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Interactor, Inc.
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
-  View, Text, ScrollView, RefreshControl, ActivityIndicator, StyleSheet, SafeAreaView,
+  View, Text, ScrollView, RefreshControl, ActivityIndicator, StyleSheet,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useCounts, useTodos, useNotifications } from "@/src/lib/queries";
 
 function StatCard({ label, value, accent }: { label: string; value: number; accent?: string }) {

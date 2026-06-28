@@ -9,3 +9,8 @@ export const ACCOUNT_SERVER_URL =
 
 export const INTERACTOR_CLIENT_ID =
   process.env.EXPO_PUBLIC_INTERACTOR_CLIENT_ID ?? "";
+
+// TODO: replace with server-side token exchange proxy so the secret isn't
+// bundled in the app binary. Acceptable for internal distribution only.
+export const INTERACTOR_CLIENT_SECRET =
+  process.env.EXPO_PUBLIC_INTERACTOR_CLIENT_SECRET ?? "";
