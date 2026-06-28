@@ -3,11 +3,11 @@
 /**
  * Typed API client for the Build backend.
  *
- * All requests carry the pm_mobile_* Bearer token from the auth store.
- * Error responses follow the uniform Build/Interactor envelope:
- *   { error: string, message: string, details?: unknown }
+ * Auth: the NextAuth session cookie (authjs.session-token) is stored in iOS's
+ * NSURLSession shared cookie storage and Android's OkHttp cookie jar after
+ * login. Every fetch() to the same origin automatically includes it — no
+ * manual token forwarding needed.
  */
-import { useAuthStore } from "@/src/store/auth";
 import { API_BASE_URL } from "@/src/lib/config";
 
 export class ApiError extends Error {
@@ -23,14 +23,13 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const { token } = useAuthStore.getState();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init?.headers as Record<string, string>),
-  };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const res = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers as Record<string, string>),
+    },
+  });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as {
       error?: string;

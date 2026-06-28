@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Interactor, Inc.
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import {
   View,
   Text,
@@ -10,58 +10,24 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  type TextInput as TextInputType,
 } from "react-native";
 import { useAuthStore } from "@/src/store/auth";
-import { useOidcRequest, exchangeCodeForToken } from "@/src/lib/oidc";
 
 export default function LoginScreen() {
-  const { signIn, signInWithJwt } = useAuthStore();
+  const { signIn } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [oidcLoading, setOidcLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const [request, response, promptAsync] = useOidcRequest();
-
-  useEffect(() => {
-    if (!response) return;
-    console.log("[login] auth response type:", response.type);
-    if (response.type === "success") {
-      console.log("[login] auth params:", JSON.stringify(response.params));
-      console.log("[login] request redirectUri:", request?.redirectUri);
-      const code = response.params.code;
-      if (!code) {
-        setError("OAuth response missing code parameter");
-        return;
-      }
-      const redirectUri = request?.redirectUri ?? "";
-      setOidcLoading(true);
-      setError(null);
-      exchangeCodeForToken(code, redirectUri)
-        .then((jwt) => {
-          console.log("[login] got jwt, exchanging for mobile token");
-          return signInWithJwt(jwt);
-        })
-        .catch((err) => {
-          console.error("[login] sign-in error:", err);
-          setError(err instanceof Error ? err.message : "Google sign-in failed");
-        })
-        .finally(() => setOidcLoading(false));
-    } else if (response.type === "error") {
-      console.error("[login] auth error:", JSON.stringify(response.error));
-      setError(response.error?.message ?? "Google sign-in failed");
-    } else {
-      console.log("[login] auth response dismissed or cancelled");
-    }
-  }, [response]);
+  const passwordRef = useRef<TextInputType>(null);
 
   async function handleSignIn() {
-    if (!email || !password) return;
+    if (!email.trim() || !password) return;
     setLoading(true);
     setError(null);
     try {
-      await signIn(email, password);
+      await signIn(email.trim(), password);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed");
     } finally {
@@ -69,68 +35,60 @@ export default function LoginScreen() {
     }
   }
 
-  async function handleGoogleSignIn() {
-    setError(null);
-    await promptAsync();
-  }
-
-  const busy = loading || oidcLoading;
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
       <View style={styles.inner}>
+        <View style={styles.logoWrap}>
+          <View style={styles.logoCircle}>
+            <Text style={styles.logoText}>B</Text>
+          </View>
+        </View>
+
         <Text style={styles.title}>Build</Text>
         <Text style={styles.subtitle}>Project management for software teams</Text>
 
-        {error && <Text style={styles.error}>{error}</Text>}
-
-        <TouchableOpacity
-          style={[styles.googleButton, busy && styles.buttonDisabled]}
-          onPress={handleGoogleSignIn}
-          disabled={busy || !request}
-        >
-          {oidcLoading ? (
-            <ActivityIndicator color="#1C1C1E" />
-          ) : (
-            <>
-              <Text style={styles.googleIcon}>G</Text>
-              <Text style={styles.googleButtonText}>Continue with Google</Text>
-            </>
-          )}
-        </TouchableOpacity>
-
-        <View style={styles.dividerRow}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>or</Text>
-          <View style={styles.dividerLine} />
-        </View>
+        {error && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, !!error && styles.inputError]}
           placeholder="Email"
           placeholderTextColor="#8E8E93"
           autoCapitalize="none"
+          autoCorrect={false}
           keyboardType="email-address"
+          textContentType="emailAddress"
+          returnKeyType="next"
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(v) => { setEmail(v); setError(null); }}
+          onSubmitEditing={() => passwordRef.current?.focus()}
+          editable={!loading}
         />
         <TextInput
-          style={styles.input}
+          ref={passwordRef}
+          style={[styles.input, !!error && styles.inputError]}
           placeholder="Password"
           placeholderTextColor="#8E8E93"
           secureTextEntry
+          textContentType="password"
+          returnKeyType="go"
           value={password}
-          onChangeText={setPassword}
+          onChangeText={(v) => { setPassword(v); setError(null); }}
           onSubmitEditing={handleSignIn}
+          editable={!loading}
         />
 
         <TouchableOpacity
-          style={[styles.button, busy && styles.buttonDisabled]}
+          style={[styles.button, (loading || !email || !password) && styles.buttonDisabled]}
           onPress={handleSignIn}
-          disabled={busy}
+          disabled={loading || !email || !password}
+          activeOpacity={0.85}
         >
           {loading ? (
             <ActivityIndicator color="#FFFFFF" />
@@ -145,50 +103,38 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFFFFF" },
-  inner: { flex: 1, justifyContent: "center", padding: 24 },
-  title: {
-    fontSize: 40,
-    fontWeight: "800",
-    color: "#1C1C1E",
-    marginBottom: 8,
-  },
-  subtitle: { fontSize: 16, color: "#8E8E93", marginBottom: 40 },
-  error: {
-    color: "#FF3B30",
-    fontSize: 14,
-    marginBottom: 16,
-    textAlign: "center",
-  },
-  googleButton: {
-    height: 52,
-    borderRadius: 9999,
-    borderWidth: 1.5,
-    borderColor: "#E5E5EA",
-    backgroundColor: "#FFFFFF",
-    flexDirection: "row",
+  inner: { flex: 1, justifyContent: "center", padding: 28 },
+  logoWrap: { alignItems: "center", marginBottom: 24 },
+  logoCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    backgroundColor: "#4CD964",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
-    marginBottom: 24,
   },
-  googleIcon: {
-    fontSize: 18,
+  logoText: { fontSize: 32, fontWeight: "800", color: "#FFFFFF" },
+  title: {
+    fontSize: 34,
     fontWeight: "800",
-    color: "#4285F4",
-  },
-  googleButtonText: {
     color: "#1C1C1E",
-    fontWeight: "600",
-    fontSize: 16,
+    textAlign: "center",
+    marginBottom: 6,
   },
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 24,
-    gap: 12,
+  subtitle: {
+    fontSize: 15,
+    color: "#8E8E93",
+    textAlign: "center",
+    marginBottom: 36,
   },
-  dividerLine: { flex: 1, height: 1, backgroundColor: "#E5E5EA" },
-  dividerText: { fontSize: 14, color: "#8E8E93" },
+  errorBox: {
+    backgroundColor: "#FFF0EF",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  errorText: { color: "#FF3B30", fontSize: 14, textAlign: "center" },
   input: {
     height: 52,
     borderRadius: 12,
@@ -200,6 +146,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#F5F5F5",
     marginBottom: 12,
   },
+  inputError: { borderColor: "#FF3B30" },
   button: {
     height: 52,
     borderRadius: 9999,
@@ -208,6 +155,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 8,
   },
-  buttonDisabled: { opacity: 0.6 },
+  buttonDisabled: { opacity: 0.5 },
   buttonText: { color: "#FFFFFF", fontWeight: "700", fontSize: 16 },
 });
