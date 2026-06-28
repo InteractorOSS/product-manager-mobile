@@ -10,8 +10,9 @@ const INACTIVE = "#8E8E93";
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
 function tabIcon(focused: boolean, active: IoniconName, inactive: IoniconName) {
-  return ({ color }: { color: string }) => (
-    <Ionicons name={focused ? active : inactive} size={24} color={color} />
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return ({ color }: { color: any }) => (
+    <Ionicons name={focused ? active : inactive} size={24} color={color as string} />
   );
 }
 

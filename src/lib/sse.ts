@@ -4,7 +4,8 @@
  * SSE foreground connection for real-time notification updates.
  *
  * Connects to /api/sse/notifications:<userId> while the app is foregrounded.
- * The native cookie jar automatically includes the NextAuth session cookie.
+ * Auth is sent as `Authorization: Bearer pm_mobile_*` — the same token used
+ * by all other API calls. The SSE route accepts pm_mobile_* via resolveActor.
  * On each `realtime` event, invalidates the TanStack Query notification +
  * counts keys so all screens refresh live.
  */
@@ -24,12 +25,17 @@ export function useNotificationSSE() {
 
   function connect() {
     const uid = userIdRef.current;
+    const { mobileToken } = useAuthStore.getState();
     if (!uid) return;
 
     esRef.current?.close();
-    // The native cookie jar automatically sends the session cookie
+    const headers: Record<string, string> = {};
+    if (mobileToken) {
+      headers["Authorization"] = `Bearer ${mobileToken}`;
+    }
     esRef.current = new EventSource(
-      `${API_BASE_URL}/api/sse/notifications:${uid}`
+      `${API_BASE_URL}/api/sse/notifications:${uid}`,
+      { headers }
     );
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

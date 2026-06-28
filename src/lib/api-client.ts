@@ -3,12 +3,12 @@
 /**
  * Typed API client for the Build backend.
  *
- * Auth: the NextAuth session cookie (authjs.session-token) is stored in iOS's
- * NSURLSession shared cookie storage and Android's OkHttp cookie jar after
- * login. Every fetch() to the same origin automatically includes it — no
- * manual token forwarding needed.
+ * Auth: all authenticated requests use `Authorization: Bearer pm_mobile_<token>`.
+ * The token is minted by the backend (POST /api/v1/me/mobile-sessions) after
+ * any sign-in method (email/password or Interactor SSO) and stored in SecureStore.
  */
 import { API_BASE_URL } from "@/src/lib/config";
+import { useAuthStore } from "@/src/store/auth";
 
 export class ApiError extends Error {
   constructor(
@@ -23,13 +23,22 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const { mobileToken } = useAuthStore.getState();
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string>),
+  };
+
+  if (mobileToken) {
+    headers["Authorization"] = `Bearer ${mobileToken}`;
+  }
+
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers as Record<string, string>),
-    },
+    headers,
   });
+
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as {
       error?: string;

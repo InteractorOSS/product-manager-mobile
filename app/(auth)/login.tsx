@@ -12,13 +12,18 @@ import {
   Platform,
   type TextInput as TextInputType,
 } from "react-native";
+import * as WebBrowser from "expo-web-browser";
 import { useAuthStore } from "@/src/store/auth";
+import { API_BASE_URL } from "@/src/lib/config";
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
-  const { signIn } = useAuthStore();
+  const { signIn, ssoSignIn } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [ssoLoading, setSsoLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const passwordRef = useRef<TextInputType>(null);
 
@@ -35,6 +40,46 @@ export default function LoginScreen() {
     }
   }
 
+  async function handleSSO() {
+    setSsoLoading(true);
+    setError(null);
+    try {
+      // callbackUrl points to the backend route that mints pm_mobile_* and
+      // redirects to buildapp://auth/callback?token=...&email=...&userId=...
+      const platform = Platform.OS === "ios" ? "ios" : "android";
+      const callbackUrl = encodeURIComponent(
+        `/api/auth/mobile-callback?platform=${platform}`
+      );
+      const signInUrl = `${API_BASE_URL}/api/auth/signin/interactor?callbackUrl=${callbackUrl}`;
+
+      const result = await WebBrowser.openAuthSessionAsync(signInUrl, "buildapp");
+
+      if (result.type !== "success" || !result.url) {
+        // User cancelled or error — no action needed
+        return;
+      }
+
+      // Parse buildapp://auth/callback?token=pm_mobile_*&email=...&userId=...
+      const url = new URL(result.url);
+      const token = url.searchParams.get("token");
+      const ssoEmail = url.searchParams.get("email");
+      const userId = url.searchParams.get("userId");
+
+      if (!token?.startsWith("pm_mobile_") || !ssoEmail || !userId) {
+        setError("Sign in failed. Please try again.");
+        return;
+      }
+
+      await ssoSignIn(token, ssoEmail, userId);
+    } catch {
+      setError("Sign in failed. Please try again.");
+    } finally {
+      setSsoLoading(false);
+    }
+  }
+
+  const busy = loading || ssoLoading;
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -49,6 +94,31 @@ export default function LoginScreen() {
 
         <Text style={styles.title}>Build</Text>
         <Text style={styles.subtitle}>Project management for software teams</Text>
+
+        {/* Interactor SSO (Google + others) */}
+        <TouchableOpacity
+          style={[styles.ssoButton, busy && styles.buttonDisabled]}
+          onPress={handleSSO}
+          disabled={busy}
+          activeOpacity={0.85}
+        >
+          {ssoLoading ? (
+            <ActivityIndicator color="#1C1C1E" />
+          ) : (
+            <>
+              <View style={styles.ssoIcon}>
+                <Text style={styles.ssoIconText}>I</Text>
+              </View>
+              <Text style={styles.ssoButtonText}>Sign in with Interactor SSO</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or continue with email</Text>
+          <View style={styles.dividerLine} />
+        </View>
 
         {error && (
           <View style={styles.errorBox}>
@@ -68,7 +138,7 @@ export default function LoginScreen() {
           value={email}
           onChangeText={(v) => { setEmail(v); setError(null); }}
           onSubmitEditing={() => passwordRef.current?.focus()}
-          editable={!loading}
+          editable={!busy}
         />
         <TextInput
           ref={passwordRef}
@@ -81,13 +151,13 @@ export default function LoginScreen() {
           value={password}
           onChangeText={(v) => { setPassword(v); setError(null); }}
           onSubmitEditing={handleSignIn}
-          editable={!loading}
+          editable={!busy}
         />
 
         <TouchableOpacity
-          style={[styles.button, (loading || !email || !password) && styles.buttonDisabled]}
+          style={[styles.button, (busy || !email || !password) && styles.buttonDisabled]}
           onPress={handleSignIn}
-          disabled={loading || !email || !password}
+          disabled={busy || !email || !password}
           activeOpacity={0.85}
         >
           {loading ? (
@@ -125,8 +195,38 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#8E8E93",
     textAlign: "center",
-    marginBottom: 36,
+    marginBottom: 28,
   },
+  ssoButton: {
+    height: 52,
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: "#E5E5EA",
+    backgroundColor: "#FFFFFF",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    marginBottom: 20,
+  },
+  ssoIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    backgroundColor: "#4CD964",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ssoIconText: { color: "#FFFFFF", fontWeight: "800", fontSize: 12 },
+  ssoButtonText: { color: "#1C1C1E", fontWeight: "500", fontSize: 15 },
+  divider: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 20,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: "#E5E5EA" },
+  dividerText: { color: "#8E8E93", fontSize: 12 },
   errorBox: {
     backgroundColor: "#FFF0EF",
     borderRadius: 10,

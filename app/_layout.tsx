@@ -21,7 +21,7 @@ const queryClient = new QueryClient({
  * push registration, and SSE foreground connection.
  */
 function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { token, userId, hydrated } = useAuthStore();
+  const { mobileToken, userId, hydrated } = useAuthStore();
   const segments = useSegments();
   const router = useRouter();
   const prevToken = useRef<string | null>(null);
@@ -30,20 +30,20 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!hydrated) return;
     const inAuthGroup = segments[0] === "(auth)";
-    if (!token && !inAuthGroup) {
+    if (!mobileToken && !inAuthGroup) {
       router.replace("/(auth)/login");
-    } else if (token && inAuthGroup) {
+    } else if (mobileToken && inAuthGroup) {
       router.replace("/(tabs)" as never);
     }
-  }, [token, hydrated, segments, router]);
+  }, [mobileToken, hydrated, segments, router]);
 
   // Register push token when the user first signs in (token transitions null → value)
   useEffect(() => {
-    if (token && !prevToken.current) {
+    if (mobileToken && !prevToken.current) {
       void registerPushToken();
     }
-    prevToken.current = token;
-  }, [token]);
+    prevToken.current = mobileToken;
+  }, [mobileToken]);
 
   // SSE foreground connection (noop when token/userId are null)
   useNotificationSSE();
