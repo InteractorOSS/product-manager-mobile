@@ -58,12 +58,12 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="feedback"
+        name="notifications"
         options={{
-          title: "Feedback",
-          tabBarLabel: "Feedback",
+          title: "Notifications",
+          tabBarLabel: "Inbox",
           tabBarIcon: ({ focused, color }) =>
-            tabIcon(focused, "chatbubble-ellipses", "chatbubble-ellipses-outline")({ color }),
+            tabIcon(focused, "notifications", "notifications-outline")({ color }),
         }}
       />
       <Tabs.Screen
