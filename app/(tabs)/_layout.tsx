@@ -2,9 +2,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { Tabs } from "expo-router";
 import { Platform } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 const PRIMARY = "#4CD964";
 const INACTIVE = "#8E8E93";
+
+type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
+
+function tabIcon(focused: boolean, active: IoniconName, inactive: IoniconName) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return ({ color }: { color: any }) => (
+    <Ionicons name={focused ? active : inactive} size={24} color={color as string} />
+  );
+}
 
 export default function TabLayout() {
   return (
@@ -22,23 +32,48 @@ export default function TabLayout() {
     >
       <Tabs.Screen
         name="index"
-        options={{ title: "Home", tabBarLabel: "Home" }}
+        options={{
+          title: "Overview",
+          tabBarLabel: "Overview",
+          tabBarIcon: ({ focused, color }) =>
+            tabIcon(focused, "grid", "grid-outline")({ color }),
+        }}
       />
       <Tabs.Screen
-        name="tasks"
-        options={{ title: "My Tasks", tabBarLabel: "Tasks" }}
+        name="goal"
+        options={{
+          title: "Goals",
+          tabBarLabel: "Goal",
+          tabBarIcon: ({ focused, color }) =>
+            tabIcon(focused, "flag", "flag-outline")({ color }),
+        }}
       />
       <Tabs.Screen
         name="approvals"
-        options={{ title: "Approvals", tabBarLabel: "Approvals" }}
+        options={{
+          title: "Approvals",
+          tabBarLabel: "Approval",
+          tabBarIcon: ({ focused, color }) =>
+            tabIcon(focused, "checkmark-circle", "checkmark-circle-outline")({ color }),
+        }}
       />
       <Tabs.Screen
-        name="inbox"
-        options={{ title: "Inbox", tabBarLabel: "Inbox" }}
+        name="notifications"
+        options={{
+          title: "Notifications",
+          tabBarLabel: "Inbox",
+          tabBarIcon: ({ focused, color }) =>
+            tabIcon(focused, "notifications", "notifications-outline")({ color }),
+        }}
       />
       <Tabs.Screen
         name="me"
-        options={{ title: "Me", tabBarLabel: "Me" }}
+        options={{
+          title: "Me",
+          tabBarLabel: "Me",
+          tabBarIcon: ({ focused, color }) =>
+            tabIcon(focused, "person", "person-outline")({ color }),
+        }}
       />
     </Tabs>
   );

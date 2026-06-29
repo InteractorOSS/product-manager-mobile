@@ -3,12 +3,12 @@
 /**
  * Typed API client for the Build backend.
  *
- * All requests carry the pm_mobile_* Bearer token from the auth store.
- * Error responses follow the uniform Build/Interactor envelope:
- *   { error: string, message: string, details?: unknown }
+ * Auth: all authenticated requests use `Authorization: Bearer pm_mobile_<token>`.
+ * The token is minted by the backend (POST /api/v1/me/mobile-sessions) after
+ * any sign-in method (email/password or Interactor SSO) and stored in SecureStore.
  */
-import { useAuthStore } from "@/src/store/auth";
 import { API_BASE_URL } from "@/src/lib/config";
+import { useAuthStore } from "@/src/store/auth";
 
 export class ApiError extends Error {
   constructor(
@@ -23,14 +23,22 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const { token } = useAuthStore.getState();
+  const { mobileToken } = useAuthStore.getState();
+
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(init?.headers as Record<string, string>),
   };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+  if (mobileToken) {
+    headers["Authorization"] = `Bearer ${mobileToken}`;
+  }
+
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers,
+  });
+
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as {
       error?: string;

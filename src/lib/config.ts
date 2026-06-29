@@ -3,6 +3,3 @@
 
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ?? "https://build.interactor.com";
-
-export const ACCOUNT_SERVER_URL =
-  process.env.EXPO_PUBLIC_ACCOUNT_SERVER_URL ?? "https://auth.interactor.com";

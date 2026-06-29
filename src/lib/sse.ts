@@ -3,15 +3,11 @@
 /**
  * SSE foreground connection for real-time notification updates.
  *
- * Connects to /api/sse/notifications:<userId> with a Bearer pm_mobile_* token
- * while the app is foregrounded. On each `realtime` event, invalidates the
- * TanStack Query notification + counts keys so all screens refresh live.
- *
- * Lifecycle:
- *   - Connect when token + userId are available and app is active
- *   - Disconnect when app backgrounds (AppState != 'active')
- *   - Reconnect when app foregrounds again
- *   - Tear down on unmount / sign-out (token becomes null)
+ * Connects to /api/sse/notifications:<userId> while the app is foregrounded.
+ * Auth is sent as `Authorization: Bearer pm_mobile_*` — the same token used
+ * by all other API calls. The SSE route accepts pm_mobile_* via resolveActor.
+ * On each `realtime` event, invalidates the TanStack Query notification +
+ * counts keys so all screens refresh live.
  */
 import { useEffect, useRef } from "react";
 import { AppState, type AppStateStatus } from "react-native";
@@ -21,24 +17,25 @@ import { useAuthStore } from "@/src/store/auth";
 import { API_BASE_URL } from "@/src/lib/config";
 
 export function useNotificationSSE() {
-  const { token, userId } = useAuthStore();
+  const { userId } = useAuthStore();
   const qc = useQueryClient();
   const esRef = useRef<EventSource | null>(null);
-  // Keep latest token/userId accessible inside the AppState callback
-  const tokenRef = useRef(token);
   const userIdRef = useRef(userId);
-  tokenRef.current = token;
   userIdRef.current = userId;
 
   function connect() {
-    const t = tokenRef.current;
     const uid = userIdRef.current;
-    if (!t || !uid) return;
+    const { mobileToken } = useAuthStore.getState();
+    if (!uid) return;
 
     esRef.current?.close();
+    const headers: Record<string, string> = {};
+    if (mobileToken) {
+      headers["Authorization"] = `Bearer ${mobileToken}`;
+    }
     esRef.current = new EventSource(
       `${API_BASE_URL}/api/sse/notifications:${uid}`,
-      { headers: { Authorization: `Bearer ${t}` } }
+      { headers }
     );
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -54,7 +51,7 @@ export function useNotificationSSE() {
   }
 
   useEffect(() => {
-    if (!token || !userId) {
+    if (!userId) {
       disconnect();
       return;
     }
@@ -71,5 +68,5 @@ export function useNotificationSSE() {
       sub.remove();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, userId]);
+  }, [userId]);
 }

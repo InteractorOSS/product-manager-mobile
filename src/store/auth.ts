@@ -1,127 +1,206 @@
 // Copyright (c) 2026 Interactor, Inc.
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /**
- * Auth store — manages the long-lived pm_mobile_* session token.
+ * Auth store for the Build mobile companion app.
  *
- * Login flow:
- *   1. POST credentials to /api/v1/admin/login on account-server → short-lived user JWT
- *   2. Decode the user JWT to extract userId + email (no library needed — public payload)
- *   3. Exchange the user JWT for a pm_mobile_* token via POST /api/v1/me/mobile-sessions
- *   4. Persist {token, userId, email} in expo-secure-store (iOS Keychain / Android Keystore)
+ * All sign-in methods (email/password AND Interactor SSO) end up storing a
+ * long-lived pm_mobile_* Bearer token in SecureStore. This token is issued by
+ * POST /api/v1/me/mobile-sessions on the product-manager backend and is what
+ * every API call and SSE connection uses for auth.
  *
- * The pm_mobile_* token is long-lived (decoupled from the ~1h user JWT TTL) and
- * per-device revocable. It is the only credential stored; the user JWT is discarded
- * after exchange.
+ * Email/password flow:
+ *   1. GET /api/auth/csrf → CSRF cookie in iOS cookie jar
+ *   2. POST /api/auth/callback/credentials → authjs.session-token cookie
+ *   3. GET /api/auth/session → confirm session, get user id/email
+ *   4. POST /api/v1/me/mobile-sessions (cookie jar auto-sends session) → pm_mobile_*
+ *
+ * Interactor SSO (Google) flow:
+ *   1. expo-web-browser opens /api/auth/signin/interactor?callbackUrl=/api/auth/mobile-callback
+ *   2. User signs in via OIDC → NextAuth sets session cookie in browser
+ *   3. /api/auth/mobile-callback mints pm_mobile_* and redirects to buildapp://auth/callback?token=...
+ *   4. openAuthSessionAsync captures the buildapp:// URL; we extract the token
  */
 import { create } from "zustand";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
-import { API_BASE_URL, ACCOUNT_SERVER_URL } from "@/src/lib/config";
+import { API_BASE_URL } from "@/src/lib/config";
 
-const SECURE_STORE_KEY = "pm_mobile_session";
+const SECURE_STORE_KEY = "pm_session_v3";
 
 interface StoredSession {
-  token: string;
   userId: string;
   email: string;
+  name: string | null;
+  mobileToken: string;
+  mobileSessionId?: string;
+}
+
+interface NextAuthSession {
+  user?: {
+    id?: string;
+    email?: string;
+    name?: string | null;
+  };
+}
+
+interface MobileSessionResponse {
+  data?: {
+    id?: string;
+    token?: string;
+  };
 }
 
 interface AuthState {
-  token: string | null;
-  userId: string | null;
   email: string | null;
+  userId: string | null;
+  mobileToken: string | null;
+  mobileSessionId: string | null;
   hydrated: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  ssoSignIn: (token: string, email: string, userId: string) => Promise<void>;
   signOut: () => Promise<void>;
   hydrate: () => Promise<void>;
 }
 
-function decodeJwtClaims(jwt: string): Record<string, unknown> {
-  try {
-    const payload = jwt.split(".")[1];
-    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
-    return JSON.parse(atob(padded.replace(/-/g, "+").replace(/_/g, "/")));
-  } catch {
-    return {};
-  }
+async function fetchCsrfToken(): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}/api/auth/csrf`);
+  const data = (await res.json()) as { csrfToken: string };
+  return data.csrfToken;
+}
+
+async function fetchSession(): Promise<{ userId: string; email: string; name: string | null } | null> {
+  const res = await fetch(`${API_BASE_URL}/api/auth/session`);
+  const data = (await res.json()) as NextAuthSession | null;
+  if (!data?.user?.id) return null;
+  return {
+    userId: data.user.id,
+    email: data.user.email ?? "",
+    name: data.user.name ?? null,
+  };
+}
+
+async function exchangeForMobileToken(
+  platform: string
+): Promise<{ token: string; sessionId: string } | null> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/me/mobile-sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ deviceName: "Build Mobile", platform }),
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as MobileSessionResponse;
+  if (!data.data?.token || !data.data?.id) return null;
+  return { token: data.data.token, sessionId: data.data.id };
+}
+
+async function validateMobileToken(token: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/me/mobile-sessions`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.ok;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
-  token: null,
-  userId: null,
   email: null,
+  userId: null,
+  mobileToken: null,
+  mobileSessionId: null,
   hydrated: false,
 
   hydrate: async () => {
-    const raw = await SecureStore.getItemAsync(SECURE_STORE_KEY);
+    const raw = await SecureStore.getItemAsync(SECURE_STORE_KEY).catch(() => null);
     if (raw) {
       try {
-        const session = JSON.parse(raw) as StoredSession;
-        set({ token: session.token, userId: session.userId, email: session.email, hydrated: true });
+        const stored = JSON.parse(raw) as StoredSession;
+        set({
+          email: stored.email,
+          userId: stored.userId,
+          mobileToken: stored.mobileToken,
+          mobileSessionId: stored.mobileSessionId ?? null,
+          hydrated: true,
+        });
+        // Validate token in the background — clear state if revoked/expired
+        validateMobileToken(stored.mobileToken)
+          .then((valid) => {
+            if (!valid) {
+              set({ email: null, userId: null, mobileToken: null, mobileSessionId: null });
+              void SecureStore.deleteItemAsync(SECURE_STORE_KEY);
+            }
+          })
+          .catch(() => {});
         return;
       } catch {}
     }
-    // Legacy: single-value token stored under old key
-    const legacy = await SecureStore.getItemAsync("pm_mobile_token");
-    set({ token: legacy ?? null, hydrated: true });
+    set({ hydrated: true });
   },
 
-  signIn: async (emailInput: string, password: string) => {
-    // Step 1: obtain short-lived user JWT from account-server
-    const loginRes = await fetch(`${ACCOUNT_SERVER_URL}/api/v1/admin/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: emailInput, password }),
+  signIn: async (email: string, password: string) => {
+    // Step 1: CSRF token (also sets csrf cookie in iOS cookie jar)
+    const csrfToken = await fetchCsrfToken();
+
+    // Step 2: Credentials login — session cookie set in iOS cookie jar
+    const body = new URLSearchParams({
+      email,
+      password,
+      csrfToken,
+      redirect: "false",
     });
-    if (!loginRes.ok) {
-      const body = (await loginRes.json().catch(() => ({}))) as { message?: string };
-      throw new Error(body.message ?? "Invalid credentials");
-    }
-    const { token: userJwt } = (await loginRes.json()) as { token: string };
-
-    // Step 2: decode user JWT to get userId + email
-    const claims = decodeJwtClaims(userJwt);
-    const userId = (claims.sub as string) ?? "";
-    const email = (claims.email as string) ?? emailInput;
-
-    // Step 3: exchange user JWT for a long-lived pm_mobile_* session token
-    const deviceName =
-      Platform.OS === "ios" ? "Build iPhone" : "Build Android";
-    const sessionRes = await fetch(`${API_BASE_URL}/api/v1/me/mobile-sessions`, {
+    await fetch(`${API_BASE_URL}/api/auth/callback/credentials`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${userJwt}`,
-      },
-      body: JSON.stringify({
-        deviceName,
-        platform: Platform.OS,
-        appVersion: "1.0.0",
-      }),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
     });
-    if (!sessionRes.ok) {
-      const body = (await sessionRes.json().catch(() => ({}))) as { message?: string };
-      throw new Error(body.message ?? "Session exchange failed");
-    }
-    const { token: mobileToken } = (await sessionRes.json()) as { token: string };
 
-    const session: StoredSession = { token: mobileToken, userId, email };
-    await SecureStore.setItemAsync(SECURE_STORE_KEY, JSON.stringify(session));
-    set({ token: mobileToken, userId, email });
+    // Step 3: Confirm session
+    const session = await fetchSession();
+    if (!session) throw new Error("Invalid email or password");
+
+    // Step 4: Exchange session cookie for long-lived pm_mobile_* token
+    const platform = Platform.OS === "ios" ? "ios" : "android";
+    const exchange = await exchangeForMobileToken(platform);
+    if (!exchange) throw new Error("Failed to initialize mobile session. Please try again.");
+
+    const stored: StoredSession = {
+      userId: session.userId,
+      email: session.email,
+      name: session.name,
+      mobileToken: exchange.token,
+      mobileSessionId: exchange.sessionId,
+    };
+    await SecureStore.setItemAsync(SECURE_STORE_KEY, JSON.stringify(stored));
+    set({
+      email: session.email,
+      userId: session.userId,
+      mobileToken: exchange.token,
+      mobileSessionId: exchange.sessionId,
+    });
+  },
+
+  ssoSignIn: async (token: string, email: string, userId: string) => {
+    // token is already a pm_mobile_* token minted by GET /api/auth/mobile-callback
+    const stored: StoredSession = {
+      userId,
+      email,
+      name: null,
+      mobileToken: token,
+    };
+    await SecureStore.setItemAsync(SECURE_STORE_KEY, JSON.stringify(stored));
+    set({ email, userId, mobileToken: token, mobileSessionId: null });
   },
 
   signOut: async () => {
-    const { token } = get();
-    if (token) {
-      // Best-effort revoke — don't block sign-out if the server is unreachable
-      fetch(`${API_BASE_URL}/api/v1/me/mobile-sessions/current`, {
+    const { mobileToken, mobileSessionId } = get();
+
+    // Revoke the mobile session if we know its ID
+    if (mobileToken && mobileSessionId) {
+      fetch(`${API_BASE_URL}/api/v1/me/mobile-sessions/${mobileSessionId}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${mobileToken}` },
       }).catch(() => {});
     }
-    await SecureStore.deleteItemAsync(SECURE_STORE_KEY);
-    await SecureStore.deleteItemAsync("pm_mobile_token"); // clear legacy key too
-    set({ token: null, userId: null, email: null });
+
+    await SecureStore.deleteItemAsync(SECURE_STORE_KEY).catch(() => {});
+    set({ email: null, userId: null, mobileToken: null, mobileSessionId: null });
   },
 }));
 
